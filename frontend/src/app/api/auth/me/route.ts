@@ -7,39 +7,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const token = authHeader.substring(7);
+    const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
+    const response = await fetch(`${backendUrl}/auth/me`, {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+    });
 
-    // Check for hardcoded admin token first
-    if (token === "admin-token") {
-      return NextResponse.json({
-        email: "Admin@gmail.com",
-        name: "Admin User",
-      });
+    const data = await response.json();
+
+    if (!response.ok) {
+      return NextResponse.json(data, { status: response.status });
     }
 
-    // Try to call the FastAPI backend for other tokens
-    try {
-      const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
-      const response = await fetch(`${backendUrl}/auth/me`, {
-        method: "GET",
-        headers: {
-          Authorization: authHeader,
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        return NextResponse.json(data, { status: response.status });
-      }
-
-      return NextResponse.json(data);
-    } catch (backendError) {
-      // If backend is not available, only allow admin token
-      console.log("Backend not available, using fallback authentication");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    return NextResponse.json(data);
   } catch (error) {
     console.error("Error in /api/auth/me:", error);
     return NextResponse.json(
