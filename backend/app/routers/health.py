@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from sqlalchemy.orm import Session
 
+from app.logger import logger
+
 from app.database import get_db
 from app.models import User
 from app.schemas import SystemHealth, BIMetrics, SystemComponent
@@ -16,6 +18,7 @@ async def get_system_health(
     db: Session = Depends(get_db)
 ):
     """Get system health status (admin only)"""
+    logger.info(f"GET /health/system - System health requested by admin: {current_user.email}")
     
     components = []
     
@@ -32,7 +35,8 @@ async def get_system_health(
                     uptime=health_data.get("uptime", "0%"),
                     response_time=health_data.get("response_time", 0)
                 ))
-            except Exception:
+            except Exception as e:
+                logger.error(f"GET /health/system - Error fetching health for service {service['name']}: {e}")
                 components.append(SystemComponent(
                     name=service["name"],
                     status="error",
@@ -40,7 +44,8 @@ async def get_system_health(
                     response_time=0
                 ))
     
-    except Exception:
+    except Exception as e:
+        logger.error(f"GET /health/system - Error fetching external services: {e}")
         # If external services are not available, return default components
         components = [
             SystemComponent(name="Load Balancer", status="healthy", uptime="99.9%", response_time=45),
@@ -51,6 +56,7 @@ async def get_system_health(
             SystemComponent(name="Authentication Service", status="healthy", uptime="99.6%", response_time=15),
         ]
     
+    logger.info(f"GET /health/system - Successfully returned system health with {len(components)} components")
     return SystemHealth(components=components)
 
 @router.get("/bi", response_model=BIMetrics)
@@ -59,6 +65,7 @@ async def get_bi_metrics(
     db: Session = Depends(get_db)
 ):
     """Get business intelligence metrics (admin only)"""
+    logger.info(f"GET /health/bi - BI metrics requested by admin: {current_user.email}")
     
     try:
         # Get revenue analytics from billing service
@@ -67,6 +74,7 @@ async def get_bi_metrics(
         # Get usage analytics from billing service
         usage_data = await external_client.get_usage_analytics()
         
+        logger.info(f"GET /health/bi - Successfully fetched BI metrics from external services")
         return BIMetrics(
             total_revenue=revenue_data.get("total_revenue", 0.0),
             total_customers=usage_data.get("total_customers", 0),
@@ -75,8 +83,10 @@ async def get_bi_metrics(
             average_load=usage_data.get("average_load", 0.0)
         )
     
-    except Exception:
+    except Exception as e:
+        logger.error(f"GET /health/bi - Error fetching external BI data: {e}")
         # If external services are not available, return default metrics
+        logger.info(f"GET /health/bi - Using default BI metrics due to external service unavailability")
         return BIMetrics(
             total_revenue=1250.75,
             total_customers=47,

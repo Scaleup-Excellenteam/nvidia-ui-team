@@ -6,6 +6,9 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get("authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.error(
+        "GET /api/health/bi - Unauthorized access attempt - missing or invalid authorization header"
+      );
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -13,11 +16,16 @@ export async function GET(request: NextRequest) {
 
     // Only admin can access BI data
     if (token !== "admin-token") {
+      console.error(
+        "GET /api/health/bi - Forbidden access attempt - admin access required"
+      );
       return NextResponse.json(
         { error: "Forbidden - Admin access required" },
         { status: 403 }
       );
     }
+
+    console.log("GET /api/health/bi - BI metrics requested by admin");
 
     // Mock BI metrics data
     const biMetrics = {
@@ -28,9 +36,10 @@ export async function GET(request: NextRequest) {
       averageLoad: 67.3,
     };
 
+    console.log("GET /api/health/bi - BI metrics data returned successfully");
     return NextResponse.json(biMetrics);
   } catch (error) {
-    console.error("Error in /api/health/bi:", error);
+    console.error("GET /api/health/bi - Error in /api/health/bi:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

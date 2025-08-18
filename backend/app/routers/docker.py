@@ -5,6 +5,8 @@ import os
 import shutil
 from datetime import datetime
 
+from app.logger import logger
+
 from app.database import get_db
 from app.models import User, DockerImage
 from app.schemas import DockerImagesResponse, DockerImageUpdate, DockerUploadResponse, ScalingType,DockerImageListItem,ImageRestrictionsUpdate, ImageRestrictionsResponse
@@ -33,9 +35,11 @@ async def upload_docker_image(
     db: Session = Depends(get_db)
 ):
     """Upload a Docker image"""
+    logger.info(f"POST /docker/upload - Docker image upload attempt by user: {current_user.email}, image_name: {image_name}")
     
     # Validate file type
     if not image.filename.endswith(('.tar', '.tar.gz', '.tgz')):
+        logger.error(f"POST /docker/upload - Invalid file type: {image.filename}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only Docker image files (.tar, .tar.gz, .tgz) are allowed"
@@ -66,12 +70,14 @@ async def upload_docker_image(
     db.commit()
     db.refresh(db_image)
     
+    logger.info(f"POST /docker/upload - Docker image uploaded successfully: {image_name}, ID: {db_image.id}")
+    
     # TODO: Send to orchestrator for processing
     # await external_client.start_container(str(db_image.id), count=1)
     
     return DockerUploadResponse(
         image_name=db_image.name,
-        file_path=db_image.image_file_path,        # שימי לב: מיפוי לשם שהבטחת
+        file_path=db_image.image_file_path,        # Note: mapping to the name you promised
         inner_port=db_image.inner_port,
         scaling_type=db_image.scaling_type,
         min_containers=db_image.min_containers or 0,
@@ -87,14 +93,18 @@ async def get_docker_images(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
+    logger.info(f"GET /docker/images - Docker images requested by user: {current_user.email}")
+    
     if current_user.is_admin:
         images = db.query(DockerImage).all()
+        logger.info(f"GET /docker/images - Admin user requested all images, count: {len(images)}")
     else:
         images = (
             db.query(DockerImage)
             .filter(DockerImage.user_id == current_user.id)
             .all()
         )
+        logger.info(f"GET /docker/images - Regular user requested their images, count: {len(images)}")
 
     items: List[DockerImageListItem] = []
 
@@ -121,8 +131,9 @@ async def get_docker_images(
             billing_data = await external_client.get_image_costs(str(image.id))
             total_cost = billing_data.get("total_cost", 0.0)
             cost_breakdown = billing_data.get("cost_breakdown", {})
-            current_payment = billing_data.get("current_payment", total_cost)  # אם צריך
-        except Exception:
+            current_payment = billing_data.get("current_payment", total_cost)  # if needed
+        except Exception as e:
+            logger.error(f"GET /docker/images - Error fetching external data for image {image.id}: {e}")
             running_containers = 0
             total_containers = 0
             healthy_containers = 0
@@ -133,12 +144,13 @@ async def get_docker_images(
             current_payment = 0.0
             cost_breakdown = {}
 
-        # מייל המשתמש (ל־admin)
+        # User email (for admin)
         user_email = None
         try:
             u = db.query(User).filter(User.id == image.user_id).first()
             user_email = u.email if u else None
-        except Exception:
+        except Exception as e:
+            logger.error(f"GET /docker/images - Error fetching user email for image {image.id}: {e}")
             pass
 
         items.append(DockerImageListItem(
@@ -147,7 +159,7 @@ async def get_docker_images(
             user_email=user_email,
             image_name=image.name,
             image_tag="latest",
-            internal_port=image.inner_port,              # מיפוי מ-inner_port
+            internal_port=image.inner_port,              # mapping from inner_port
             running_containers=running_containers,
             total_containers=total_containers,
             requests_per_second=requests_per_second,
@@ -161,6 +173,7 @@ async def get_docker_images(
             status=image.status,
         ))
 
+    logger.info(f"GET /docker/images - Successfully returned {len(items)} images")
     return DockerImagesResponse(images=items)
 
 @router.put(
@@ -174,20 +187,25 @@ async def update_image_restrictions(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    # 404 אם לא קיים
+    logger.info(f"PUT /docker/images/{image_id}/restrictions - Update attempt by user: {current_user.email}")
+    
+    # 404 if not exists
     image: DockerImage | None = db.query(DockerImage).filter(DockerImage.id == image_id).first()
     if not image:
+        logger.error(f"PUT /docker/images/{image_id}/restrictions - Image not found")
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # הרשאות: רק בעלים או אדמין
+    # Permissions: only owner or admin
     if not current_user.is_admin and image.user_id != current_user.id:
+        logger.error(f"PUT /docker/images/{image_id}/restrictions - Unauthorized access attempt by user: {current_user.email}")
         raise HTTPException(status_code=403, detail="Not authorized to modify this image")
 
-    # אם לא נשלח שום שדה לעדכון
+    # If no fields were sent for update
     if body.items_per_container is None and body.payment_limit is None:
+        logger.error(f"PUT /docker/images/{image_id}/restrictions - No fields to update")
         raise HTTPException(status_code=400, detail="Nothing to update")
 
-    # עדכון השדות (רק מה שנשלח)
+    # Update fields (only what was sent)
     if body.items_per_container is not None:
         image.items_per_container = body.items_per_container
     if body.payment_limit is not None:
@@ -197,12 +215,14 @@ async def update_image_restrictions(
     db.commit()
     db.refresh(image)
 
-    # החזרת תשובה לפי החוזה שביקשת (camelCase ב-JSON)
+    logger.info(f"PUT /docker/images/{image_id}/restrictions - Image restrictions updated successfully")
+
+    # Return response according to the contract you requested (camelCase in JSON)
     return ImageRestrictionsResponse(
         image_id=image.id,
         image_name=image.name,
         items_per_container=image.items_per_container,
         payment_limit=image.payment_limit,
         status=image.status,
-        updated_at=image.updated_at,  # אם קיים בעמודה; אחרת ישאיר None
+        updated_at=image.updated_at,  # if exists in column; otherwise will leave None
     )

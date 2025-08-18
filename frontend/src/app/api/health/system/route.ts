@@ -6,6 +6,9 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get("authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.error(
+        "GET /api/health/system - Unauthorized access attempt - missing or invalid authorization header"
+      );
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -13,11 +16,16 @@ export async function GET(request: NextRequest) {
 
     // Only admin can access health data
     if (token !== "admin-token") {
+      console.error(
+        "GET /api/health/system - Forbidden access attempt - admin access required"
+      );
       return NextResponse.json(
         { error: "Forbidden - Admin access required" },
         { status: 403 }
       );
     }
+
+    console.log("GET /api/health/system - System health requested by admin");
 
     // Mock system components data
     const systemComponents = [
@@ -59,9 +67,15 @@ export async function GET(request: NextRequest) {
       },
     ];
 
+    console.log(
+      "GET /api/health/system - System health data returned successfully"
+    );
     return NextResponse.json({ components: systemComponents });
   } catch (error) {
-    console.error("Error in /api/health/system:", error);
+    console.error(
+      "GET /api/health/system - Error in /api/health/system:",
+      error
+    );
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

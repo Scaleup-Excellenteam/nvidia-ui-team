@@ -6,6 +6,8 @@ import time
 import asyncio
 import httpx
 
+from app.logger import logger
+
 from app.routers import auth, docker, health
 from app.database import engine, SessionLocal
 from app.models import Base, User
@@ -22,14 +24,16 @@ def create_tables():
     for attempt in range(max_retries):
         try:
             Base.metadata.create_all(bind=engine)
-            print("Database tables created successfully")
+            logger.info("Database tables created successfully")
             break
         except Exception as e:
             if attempt < max_retries - 1:
+                logger.error(f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}")
                 print(f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}")
                 print(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
             else:
+                logger.error(f"Failed to connect to database after {max_retries} attempts: {e}")
                 print(f"Failed to connect to database after {max_retries} attempts: {e}")
                 raise
 
@@ -48,10 +52,11 @@ def ensure_admin_user():
             )
             db.add(user)
             db.commit()
-            print("Admin user created successfully")
+            logger.info("Admin user created successfully")
         else:
-            print("Admin user already exists")
+            logger.info("Admin user already exists")
     except Exception as e:
+        logger.error(f"Error creating admin user: {e}")
         print(f"Error creating admin user: {e}")
     finally:
         db.close()
@@ -82,6 +87,7 @@ app.include_router(health.router, prefix="/health", tags=["Health & Monitoring"]
 
 @app.get("/")
 async def root():
+    logger.info("GET / - Root endpoint accessed")
     # Lightweight HTML landing similar to simple_server to make backend look nice again
     html = """
     <!doctype html>
@@ -126,6 +132,7 @@ SERVICE_ID = os.getenv("SERVICE_ID", "ui-1")
 
 @app.on_event("startup")
 async def register_with_registry():
+    logger.info("Starting service registry registration")
     payload = {
         "id": SERVICE_ID,
         "kind": "ui",
@@ -145,14 +152,17 @@ async def register_with_registry():
                     timeout=10,
                 )
                 resp.raise_for_status()
+                logger.info(f"Registered UI service with registry: {payload}")
                 print("Registered UI service with registry:", payload)
                 break
         except Exception as e:
             if attempt < max_attempts - 1:
+                logger.error(f"Registry registration failed (attempt {attempt + 1}/{max_attempts}): {e}")
                 print(
                     f"Registry registration failed (attempt {attempt + 1}/{max_attempts}): {e}. "
                     f"Retrying in {retry_delay_seconds} seconds..."
                 )
                 await asyncio.sleep(retry_delay_seconds)
             else:
+                logger.error(f"Failed to register UI service with registry: {e}")
                 print("Failed to register UI service with registry:", e)

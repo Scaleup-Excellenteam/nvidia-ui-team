@@ -90,6 +90,16 @@ do {
     }
 } while ($true)
 
+# Copy logs before stopping
+Write-Host ""
+Write-Host "Copying backend logs..." -ForegroundColor Yellow
+try {
+    docker cp nvidia-ui-backend:/app/logs ./backend_logs
+    Write-Host "Backend logs copied to ./backend_logs/" -ForegroundColor Green
+} catch {
+    Write-Host "Warning: Could not copy backend logs" -ForegroundColor Yellow
+}
+
 # Stop the servers
 Write-Host ""
 Write-Host "Stopping containers..." -ForegroundColor Yellow

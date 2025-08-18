@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import timedelta
-import os
+
+from app.logger import logger
 
 from app.database import get_db
 from app.models import User
@@ -18,13 +19,16 @@ router = APIRouter()
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
 async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
-    # בדיקת כפילות
+    logger.info(f"POST /auth/signup - User registration attempt for email: {user_data.email}")
+    
+    # Check for duplicates
     email_norm = user_data.email.strip().lower()
     existing_user = db.query(User).filter(User.email == email_norm).first()
     if existing_user:
+        logger.error(f"POST /auth/signup - Email already registered: {email_norm}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
-    # יצירה ושמירה
+    # Create and save
     hashed_password = get_password_hash(user_data.password)
     db_user = User(
         email=email_norm,
@@ -37,9 +41,11 @@ async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
 
-    # שתי אפשרויות החזרה – בחרי אחת:
+    logger.info(f"POST /auth/signup - User registered successfully: {email_norm}")
 
-    # א. להחזיר את אובייקט ה-ORM עצמו (המודל יחלץ רק את 3 השדות):
+    # Two return options - choose one:
+
+    # a. Return the ORM object itself (the model will extract only the 3 fields):
     return {
          "email": db_user.email,
          "first_name": db_user.first_name,
@@ -49,9 +55,12 @@ async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
 @router.post("/signin", response_model=Token)
 async def signin(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate user and return access token"""
+    logger.info(f"POST /auth/signin - Login attempt for email: {user_credentials.email}")
+    
     # Find user by email
     user = db.query(User).filter(User.email == user_credentials.email).first()
     if not user:
+        logger.error(f"POST /auth/signin - User not found: {user_credentials.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -59,6 +68,7 @@ async def signin(user_credentials: UserLogin, db: Session = Depends(get_db)):
     
     # Verify password
     if not verify_password(user_credentials.password, user.hashed_password):
+        logger.error(f"POST /auth/signin - Invalid password for user: {user_credentials.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -66,6 +76,7 @@ async def signin(user_credentials: UserLogin, db: Session = Depends(get_db)):
     
     # Check if user is active
     if not user.is_active:
+        logger.error(f"POST /auth/signin - Inactive user login attempt: {user_credentials.email}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
@@ -76,6 +87,8 @@ async def signin(user_credentials: UserLogin, db: Session = Depends(get_db)):
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
+    
+    logger.info(f"POST /auth/signin - User logged in successfully: {user_credentials.email}")
     
     return {
         "access_token": access_token,
@@ -95,6 +108,7 @@ async def signin(user_credentials: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
     """Get current user information"""
+    logger.info(f"GET /auth/me - User info requested for: {current_user.email}")
     return UserResponse(
         id=current_user.id,
         email=current_user.email,
