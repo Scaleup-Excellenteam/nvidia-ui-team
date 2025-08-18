@@ -2,6 +2,7 @@ from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
+import time
 
 from app.routers import auth, docker, health
 from app.database import engine, SessionLocal
@@ -11,8 +12,24 @@ from app.auth import get_password_hash
 # Load environment variables
 load_dotenv()
 
-# Create database tables and ensure admin user exists
-Base.metadata.create_all(bind=engine)
+def create_tables():
+    """Create database tables with retry logic for PostgreSQL"""
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            Base.metadata.create_all(bind=engine)
+            print("Database tables created successfully")
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}")
+                print(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                print(f"Failed to connect to database after {max_retries} attempts: {e}")
+                raise
 
 def ensure_admin_user():
     db = SessionLocal()
@@ -23,15 +40,22 @@ def ensure_admin_user():
                 email="admin@gmail.com",
                 first_name="Admin",
                 last_name="User",
-                hashed_password=get_password_hash("Admin"),
+                hashed_password=get_password_hash("admin"),  # lowercase password
                 is_admin=True,
                 is_active=True,
             )
             db.add(user)
             db.commit()
+            print("Admin user created successfully")
+        else:
+            print("Admin user already exists")
+    except Exception as e:
+        print(f"Error creating admin user: {e}")
     finally:
         db.close()
 
+# Initialize database
+create_tables()
 ensure_admin_user()
 
 app = FastAPI(
@@ -82,7 +106,7 @@ async def root():
           <div class='content'>
             <p>
               <span class='tag'>FastAPI</span>
-              <span class='tag'>SQLite</span>
+              <span class='tag'>PostgreSQL</span>
               <span class='tag'>JWT</span>
             </p>
             <p>Explore interactive docs at <a href='/docs'>/docs</a>.</p>

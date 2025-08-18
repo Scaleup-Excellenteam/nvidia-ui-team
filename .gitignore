@@ -7,28 +7,15 @@ __pycache__/
 *.so
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # Virtual environments
 venv/
 env/
 ENV/
-env.bak/
-venv.bak/
 .venv/
 
 # Node.js
@@ -51,11 +38,14 @@ build/
 .env.test.local
 .env.production.local
 
-# Database files
+# Database files (SQLite - old)
 *.db
 *.sqlite
 *.sqlite3
 scaleup_nvidia.db
+
+# PostgreSQL data (Docker volumes)
+postgres_data/
 
 # IDE and Editor files
 .vscode/
@@ -73,65 +63,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Runtime data
-pids/
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
+# Coverage and testing
 coverage/
 *.lcov
-
-# nyc test coverage
 .nyc_output
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# Next.js build output
-.next
-
-# Nuxt.js build / generate output
-.nuxt
-dist
-
-# Gatsby files
-.cache/
-public
-
-# Storybook build outputs
-.out
-.storybook-out
-
-# Temporary folders
-tmp/
-temp/
+test-results/
 
 # Docker
 .dockerignore
@@ -158,23 +94,11 @@ secrets.json
 *.backup
 *.old
 
-# Test files
-test-results/
-coverage/
-.nyc_output/
-
-# Documentation build
-docs/_build/
-
 # Local configuration
 config.local.json
 settings.local.json
 
-# Additional project-specific files
-env.example
-database-schema.sql
-
-# Frontend-specific files (Next.js, pnpm, yarn, vercel)
+# Frontend-specific files
 .pnp
 .pnp.*
 .pnpm-debug.log*
@@ -188,3 +112,6 @@ next-env.d.ts
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+
+# Alembic
+alembic/versions/

@@ -1,19 +1,32 @@
 services:
+  postgres:
+    image: postgres:15
+    container_name: nvidia-ui-postgres
+    environment:
+      - POSTGRES_DB=scaleup_nvidia
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: nvidia-ui-backend
     environment:
-      - DATABASE_URL=sqlite:////data/scaleup_nvidia.db
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/scaleup_nvidia
       - ALLOWED_ORIGINS=http://localhost:3000
       - SECRET_KEY=dev-secret
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=60
-    volumes:
-      - backend_data:/data
     ports:
       - "8000:8000"
+    depends_on:
+      - postgres
     restart: unless-stopped
 
   frontend:
@@ -32,5 +45,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  backend_data:
+  postgres_data:
     driver: local

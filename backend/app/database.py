@@ -3,13 +3,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Use SQLite for development (easier setup)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./scaleup_nvidia.db")
+# PostgreSQL configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/scaleup_nvidia")
 
-engine = create_engine(
-    DATABASE_URL, 
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-)
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
