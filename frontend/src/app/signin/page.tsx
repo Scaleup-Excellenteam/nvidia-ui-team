@@ -40,14 +40,16 @@ export default function SigninPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Login failed");
+        throw new Error(data.detail || data.message || "Login failed");
       }
 
       console.log("Signin successful:", data);
       console.log("Email being sent:", formData.email);
 
       // Store token if provided by backend
-      if (data.token) {
+      if (data.access_token) {
+        localStorage.setItem("authToken", data.access_token);
+      } else if (data.token) {
         localStorage.setItem("authToken", data.token);
       }
 

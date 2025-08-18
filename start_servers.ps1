@@ -69,8 +69,8 @@ Write-Host "   Frontend: http://localhost:3000" -ForegroundColor Cyan
 Write-Host "   Backend API: http://localhost:8000" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Admin Login:" -ForegroundColor White
-Write-Host "   Email: Admin@gmail.com" -ForegroundColor Cyan
-Write-Host "   Password: Admin" -ForegroundColor Cyan
+Write-Host "   Email: admin@gmail.com" -ForegroundColor Cyan
+Write-Host "   Password: admin" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "API Documentation:" -ForegroundColor White
 Write-Host "   Root: http://localhost:8000" -ForegroundColor Cyan
