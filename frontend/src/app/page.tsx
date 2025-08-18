@@ -7,7 +7,7 @@ export default function WelcomePage() {
         {/* Header */}
         <div className="text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Welcome to Our App
+            Welcome to Kef Kef Kef
           </h1>
           <p className="text-lg text-gray-600 mb-8">
             Get started by creating an account or signing in to your existing

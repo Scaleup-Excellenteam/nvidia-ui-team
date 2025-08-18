@@ -25,14 +25,14 @@ export default function SigninPage() {
     setIsLoading(true);
 
     try {
-      // Make API call to backend
+      // Make API call to backend with case-insensitive email
       const response = await fetch("/api/auth/signin", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: formData.email,
+          email: formData.email.toLowerCase().trim(),
           password: formData.password,
         }),
       });
@@ -44,7 +44,7 @@ export default function SigninPage() {
       }
 
       console.log("Signin successful:", data);
-      console.log("Email being sent:", formData.email);
+      console.log("Email being sent:", formData.email.toLowerCase().trim());
 
       // Store token if provided by backend
       if (data.access_token) {
@@ -168,32 +168,6 @@ export default function SigninPage() {
                     </svg>
                   )}
                 </button>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label
-                  htmlFor="remember-me"
-                  className="ml-2 block text-sm text-gray-900"
-                >
-                  Remember me
-                </label>
-              </div>
-
-              <div className="text-sm">
-                <Link
-                  href="/forgot-password"
-                  className="font-medium text-blue-600 hover:text-blue-500"
-                >
-                  Forgot your password?
-                </Link>
               </div>
             </div>
 
