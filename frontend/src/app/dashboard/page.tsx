@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [userEmail, setUserEmail] = useState("");
   const [dockerImages, setDockerImages] = useState<DockerImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
 
   useEffect(() => {
     // Check if user is logged in
@@ -72,15 +73,15 @@ export default function DashboardPage() {
     checkAdminStatus();
   }, [router]);
 
-  useEffect(() => {
-    if (isAdmin) {
-      // Fetch all docker images for admin
-      fetchDockerImages();
+  const fetchDockerImages = useCallback(async () => {
+    if (isFetching) {
+      console.log("Already fetching images, skipping...");
+      return;
     }
-  }, [isAdmin]);
 
-  const fetchDockerImages = async () => {
     try {
+      setIsFetching(true);
+      console.log("Fetching docker images...");
       const response = await fetch("/api/docker/images", {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("authToken")}`,
@@ -89,8 +90,20 @@ export default function DashboardPage() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Docker images data received:", data);
+        console.log("Raw Docker images data received:", data);
         console.log("Number of images:", data.images?.length || 0);
+
+        // Log each image individually to see duplicates
+        if (data.images) {
+          data.images.forEach((image: DockerImage, index: number) => {
+            console.log(`Image ${index + 1}:`, {
+              id: image.id,
+              name: image.image_name,
+              tag: image.image_tag,
+              user: image.user_email,
+            });
+          });
+        }
 
         // Deduplicate images based on ID
         const uniqueImages = data.images
@@ -102,12 +115,31 @@ export default function DashboardPage() {
           : [];
 
         console.log("Unique images after deduplication:", uniqueImages.length);
+        console.log(
+          "Final unique images:",
+          uniqueImages.map((img: DockerImage) => ({
+            id: img.id,
+            name: img.image_name,
+          }))
+        );
         setDockerImages(uniqueImages);
+      } else {
+        console.error("Failed to fetch docker images:", response.status);
       }
     } catch (error) {
       console.error("Error fetching docker images:", error);
+    } finally {
+      setIsFetching(false);
     }
-  };
+  }, [isFetching]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      console.log("Admin detected, fetching docker images...");
+      // Fetch all docker images for admin
+      fetchDockerImages();
+    }
+  }, [isAdmin, fetchDockerImages]);
 
   const updateItemRestrictions = async (
     imageId: string,

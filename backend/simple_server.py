@@ -59,7 +59,8 @@ def init_database():
             disk_limit TEXT DEFAULT '10GB',
             payment_limit REAL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(user_id, image_name, image_tag)
         )
     ''')
     
@@ -259,6 +260,9 @@ class ScaleUpNvidiaHandler(BaseHTTPRequestHandler):
                     images.append(image_data)
                 
                 conn.close()
+                print(f"DEBUG: Returning {len(images)} images for admin user")
+                for i, img in enumerate(images):
+                    print(f"DEBUG: Image {i+1}: ID={img['id']}, Name={img['image_name']}, User={img['user_email']}")
                 self._send_json_response({"images": images})
             
             elif path == "/containers":
@@ -448,17 +452,21 @@ class ScaleUpNvidiaHandler(BaseHTTPRequestHandler):
                 
                 conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO docker_images 
-                    (user_id, image_name, image_tag, internal_port, min_containers, 
-                     max_containers, cpu_limit, memory_limit, disk_limit, payment_limit)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (user["user_id"], image_name, image_tag, internal_port, min_containers,
-                     max_containers, cpu_limit, memory_limit, disk_limit, payment_limit))
-                
-                image_id = cursor.lastrowid
-                conn.commit()
-                conn.close()
+                try:
+                    cursor.execute("""
+                        INSERT INTO docker_images 
+                        (user_id, image_name, image_tag, internal_port, min_containers, 
+                         max_containers, cpu_limit, memory_limit, disk_limit, payment_limit)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (user["user_id"], image_name, image_tag, internal_port, min_containers,
+                         max_containers, cpu_limit, memory_limit, disk_limit, payment_limit))
+                    
+                    image_id = cursor.lastrowid
+                    conn.commit()
+                    conn.close()
+                except sqlite3.IntegrityError:
+                    conn.close()
+                    return self._send_error("Image already exists for this user", 409)
                 
                 self._send_json_response({
                     "message": "Docker image created successfully",
