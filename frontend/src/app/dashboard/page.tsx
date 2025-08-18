@@ -22,7 +22,7 @@ interface DockerImage {
   requests_per_second: number;
   total_requests: number;
   total_cost: number;
-  cost_breakdown: any;
+  cost_breakdown: Record<string, unknown>;
   healthy_containers: number;
   total_errors: number;
 }
@@ -71,6 +71,7 @@ export default function DashboardPage() {
 
     init();
     // empty dependency array ensures this runs once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDockerImages = async () => {
@@ -133,6 +134,7 @@ export default function DashboardPage() {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const updateItemRestrictions = async (
     imageId: string,
     restrictions: number
