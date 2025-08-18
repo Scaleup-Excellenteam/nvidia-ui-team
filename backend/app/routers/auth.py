@@ -5,7 +5,7 @@ import os
 
 from app.database import get_db
 from app.models import User
-from app.schemas import UserCreate, UserLogin, Token, UserResponse
+from app.schemas import UserCreate, UserLogin, Token, UserResponse,SignupResponse
 from app.auth import (
     get_password_hash, 
     verify_password, 
@@ -16,35 +16,35 @@ from app.auth import (
 
 router = APIRouter()
 
-@router.post("/signup", response_model=dict)
+@router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
 async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user"""
-    # Check if user already exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    # בדיקת כפילות
+    email_norm = user_data.email.strip().lower()
+    existing_user = db.query(User).filter(User.email == email_norm).first()
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Create new user
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
+    # יצירה ושמירה
     hashed_password = get_password_hash(user_data.password)
     db_user = User(
-        email=user_data.email,
+        email=email_norm,
         first_name=user_data.first_name,
         last_name=user_data.last_name,
         hashed_password=hashed_password,
-        is_admin=user_data.email.lower() in ("admin@gmail.com", "admin")
+        is_admin=False,
     )
-    
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    
+
+    # שתי אפשרויות החזרה – בחרי אחת:
+
+    # א. להחזיר את אובייקט ה-ORM עצמו (המודל יחלץ רק את 3 השדות):
     return {
-        "success": True,
-        "message": "User registered successfully"
-    }
+         "email": db_user.email,
+         "first_name": db_user.first_name,
+         "last_name": db_user.last_name
+     }
 
 @router.post("/signin", response_model=Token)
 async def signin(user_credentials: UserLogin, db: Session = Depends(get_db)):
