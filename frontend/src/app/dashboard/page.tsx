@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -34,46 +34,46 @@ export default function DashboardPage() {
   const [dockerImages, setDockerImages] = useState<DockerImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
+  const hasFetchedImagesRef = useRef(false);
 
   useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      router.push("/signin");
-      return;
-    }
+    // Single-run: check auth, then if admin fetch images once
+    const init = async () => {
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        router.push("/signin");
+        return;
+      }
 
-    // Check if user is admin (email = Admin, password = Admin)
-    const checkAdminStatus = async () => {
       try {
-        const response = await fetch("/api/auth/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        const meRes = await fetch("/api/auth/me", {
+          headers: { Authorization: `Bearer ${token}` },
         });
-
-        if (response.ok) {
-          const userData = await response.json();
-          console.log("User data received:", userData);
+        if (meRes.ok) {
+          const userData = await meRes.json();
           setUserEmail(userData.email);
-          // Check for admin with case-insensitive comparison
           const isAdminUser =
             userData.email?.toLowerCase() === "admin@gmail.com" ||
             userData.email?.toLowerCase() === "admin";
-          console.log("Is admin check:", isAdminUser, "Email:", userData.email);
           setIsAdmin(isAdminUser);
+
+          if (isAdminUser && !hasFetchedImagesRef.current) {
+            hasFetchedImagesRef.current = true; // guard before fetch
+            await fetchDockerImages();
+          }
         }
       } catch (error) {
-        console.error("Error checking user status:", error);
+        console.error("Error initializing dashboard:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    checkAdminStatus();
-  }, [router]);
+    init();
+    // empty dependency array ensures this runs once on mount
+  }, []);
 
-  const fetchDockerImages = useCallback(async () => {
+  const fetchDockerImages = async () => {
     if (isFetching) {
       console.log("Already fetching images, skipping...");
       return;
@@ -131,15 +131,7 @@ export default function DashboardPage() {
     } finally {
       setIsFetching(false);
     }
-  }, [isFetching]);
-
-  useEffect(() => {
-    if (isAdmin) {
-      console.log("Admin detected, fetching docker images...");
-      // Fetch all docker images for admin
-      fetchDockerImages();
-    }
-  }, [isAdmin, fetchDockerImages]);
+  };
 
   const updateItemRestrictions = async (
     imageId: string,
@@ -159,7 +151,7 @@ export default function DashboardPage() {
       );
 
       if (response.ok) {
-        fetchDockerImages(); // Refresh the list
+        // Updated successfully; avoiding automatic refetch to prevent extra calls
       }
     } catch (error) {
       console.error("Error updating restrictions:", error);
