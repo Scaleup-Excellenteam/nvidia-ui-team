@@ -1,8 +1,6 @@
-from pydantic import BaseModel, EmailStr, Field
-from pydantic.config import ConfigDict
-from typing import Optional, List,Literal,Dict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from typing import Optional, List, Literal, Dict
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict,AliasChoices
 
 ScalingType = Literal["static", "dynamic", "auto"]
 
@@ -25,8 +23,7 @@ class UserResponse(UserBase):
     is_active: bool
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SignupResponse(BaseModel):
     email: EmailStr
@@ -80,9 +77,7 @@ class DockerImageResponse(DockerImageBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 class DockerImageUpdate(BaseModel):
     items_per_container: Optional[int] = Field(None, alias="itemRestrictions")
@@ -96,7 +91,7 @@ class DockerImageListItem(BaseModel):
     user_email: Optional[EmailStr] = None
     image_name: str
     image_tag: str = Field(default="latest")
-    internal_port: int               # שימי לב: internal_port (את ממפה מ-inner_port)
+    internal_port: int               # Note: internal_port (mapping from inner_port)
     running_containers: int
     total_containers: int
     requests_per_second: float
@@ -113,26 +108,26 @@ class DockerImagesResponse(BaseModel):
     images: List[DockerImageListItem]
 
 class ImageRestrictionsUpdate(BaseModel):
-    # מקבל גם camelCase מה-UI
+    # Accepts both camelCase from UI
     items_per_container: Optional[int] = Field(
         None, gt=0,
-        validation_alias=AliasChoices("items_per_container", "itemRestrictions"),
+        validation_alias="itemRestrictions",
     )
     payment_limit: Optional[float] = Field(
         None, ge=0,
-        validation_alias=AliasChoices("payment_limit", "paymentLimit"),
+        validation_alias="paymentLimit",
     )
 
 class ImageRestrictionsResponse(BaseModel):
     image_id: int = Field(..., serialization_alias="imageId")
     image_name: str = Field(..., serialization_alias="imageName")
-    # מחזירים camelCase ב-JSON, שומרים snake_case בקוד/DB
+    # Return camelCase in JSON, keep snake_case in code/DB
     items_per_container: int = Field(..., serialization_alias="itemRestrictions")
     payment_limit: float = Field(..., serialization_alias="paymentLimit")
     status: Literal["processing", "ready", "failed"]
     updated_at: Optional[datetime] = Field(None, serialization_alias="updatedAt")
 
-    # לאפשר החזרה מאובייקט ORM אם תרצי
+    # To allow returning from ORM object if you want
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
     
 # Health schemas
