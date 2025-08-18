@@ -5,16 +5,26 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 interface DockerImage {
-  id: string;
-  name: string;
-  instances: number;
-  avgRequestsPerSecond: number;
-  cost: number;
-  itemRestrictions: number;
-  paymentLimit: number;
-  errors: string[];
-  payment: number;
-  status: "running" | "stopped" | "error";
+  id: number;
+  image_name: string;
+  image_tag: string;
+  internal_port: number;
+  min_containers: number;
+  max_containers: number;
+  cpu_limit: string;
+  memory_limit: string;
+  disk_limit: string;
+  payment_limit: number;
+  created_at: string;
+  user_email: string;
+  running_containers: number;
+  total_containers: number;
+  requests_per_second: number;
+  total_requests: number;
+  total_cost: number;
+  cost_breakdown: any;
+  healthy_containers: number;
+  total_errors: number;
 }
 
 export default function DashboardPage() {
@@ -79,7 +89,20 @@ export default function DashboardPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setDockerImages(data.images);
+        console.log("Docker images data received:", data);
+        console.log("Number of images:", data.images?.length || 0);
+
+        // Deduplicate images based on ID
+        const uniqueImages = data.images
+          ? data.images.filter(
+              (image: DockerImage, index: number, self: DockerImage[]) =>
+                index ===
+                self.findIndex((img: DockerImage) => img.id === image.id)
+            )
+          : [];
+
+        console.log("Unique images after deduplication:", uniqueImages.length);
+        setDockerImages(uniqueImages);
       }
     } catch (error) {
       console.error("Error fetching docker images:", error);
@@ -187,22 +210,19 @@ export default function DashboardPage() {
                       Image Name
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Instances
+                      Containers (Running/Total)
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Avg Requests/sec
+                      Requests/sec
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Cost
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Resources
+                      Total Cost
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Payment Limit
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Current Payment
+                      Current Cost
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
@@ -216,54 +236,50 @@ export default function DashboardPage() {
                   {dockerImages.map((image) => (
                     <tr key={image.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {image.name}
+                        {image.image_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {image.instances}
+                        {image.running_containers} / {image.total_containers}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {image.avgRequestsPerSecond.toFixed(2)}
+                        {image.requests_per_second
+                          ? image.requests_per_second.toFixed(2)
+                          : "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${image.cost.toFixed(2)}
+                        $
+                        {image.total_cost
+                          ? image.total_cost.toFixed(2)
+                          : "0.00"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <input
-                          type="number"
-                          value={image.itemRestrictions}
-                          onChange={(e) =>
-                            updateItemRestrictions(
-                              image.id,
-                              parseInt(e.target.value)
-                            )
-                          }
-                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
+                        $
+                        {image.payment_limit
+                          ? image.payment_limit.toFixed(2)
+                          : "0.00"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${image.paymentLimit.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${image.payment.toFixed(2)}
+                        $
+                        {image.total_cost
+                          ? image.total_cost.toFixed(2)
+                          : "0.00"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            image.status === "running"
+                            image.running_containers > 0
                               ? "bg-green-100 text-green-800"
-                              : image.status === "stopped"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-red-100 text-red-800"
+                              : "bg-yellow-100 text-yellow-800"
                           }`}
                         >
-                          {image.status}
+                          {image.running_containers > 0 ? "Running" : "Stopped"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <button
                           onClick={() => {
-                            if (image.errors.length > 0) {
-                              alert(`Errors: ${image.errors.join(", ")}`);
+                            if (image.total_errors > 0) {
+                              alert(`Errors: ${image.total_errors}`);
                             } else {
                               alert("No errors for this image");
                             }
