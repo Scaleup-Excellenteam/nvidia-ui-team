@@ -3,6 +3,14 @@ import os
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
 
+# Prefer in-repo mock services unless explicitly disabled
+USE_MOCKS = os.getenv("USE_MOCK_SERVICES", "true").lower() in ("1", "true", "yes")
+if USE_MOCKS:
+    from mock_services import load_balancer as mock_lb  # type: ignore
+    from mock_services import orchestrator as mock_orch  # type: ignore
+    from mock_services import service_discovery as mock_sd  # type: ignore
+    from mock_services import billing as mock_billing  # type: ignore
+
 # External service URLs
 ORCHESTRATOR_API_URL = os.getenv("ORCHESTRATOR_API_URL", "http://localhost:8001")
 LOAD_BALANCER_API_URL = os.getenv("LOAD_BALANCER_API_URL", "http://localhost:8002")
@@ -31,11 +39,20 @@ class ExternalServiceClient:
     # Orchestrator API calls
     async def get_container_instances(self, image_id: str) -> List[Dict[str, Any]]:
         """Get all container instances for an image"""
+        if USE_MOCKS:
+            instances = mock_orch.get_containers_by_image(image_id)
+            return {"instances": instances}  # keep dict with key 'instances'
         url = f"{self.orchestrator_url}/containers/{image_id}/instances"
         return await self._make_request(url)
 
     async def start_container(self, image_id: str, count: int = 1, resources: Optional[Dict] = None) -> Dict[str, Any]:
         """Start new container instances"""
+        if USE_MOCKS:
+            new_ids = []
+            for _ in range(count):
+                c = mock_orch.create_container(image_id, resources or {})
+                new_ids.append(c["id"])
+            return {"started": new_ids}
         url = f"{self.orchestrator_url}/containers/{image_id}/start"
         data = {"count": count}
         if resources:
@@ -44,22 +61,36 @@ class ExternalServiceClient:
 
     async def stop_container(self, image_id: str, instance_id: str) -> Dict[str, Any]:
         """Stop a specific container instance"""
+        if USE_MOCKS:
+            ok = mock_orch.stop_container(instance_id)
+            return {"stopped": ok}
         url = f"{self.orchestrator_url}/containers/{image_id}/stop"
         return await self._make_request(url, method="POST", json={"instanceId": instance_id})
 
     async def get_container_health(self, image_id: str) -> Dict[str, Any]:
         """Get health metrics for containers"""
+        if USE_MOCKS:
+            containers = mock_orch.get_containers_by_image(image_id)
+            return {"errors": [], "containers": [mock_orch.get_container_health(c["id"]) for c in containers]}
         url = f"{self.orchestrator_url}/containers/{image_id}/health"
         return await self._make_request(url)
 
     async def update_container_resources(self, image_id: str, resources: Dict[str, Any]) -> Dict[str, Any]:
         """Update resource limits for containers"""
+        if USE_MOCKS:
+            updated = []
+            for c in mock_orch.get_containers_by_image(image_id):
+                if mock_orch.update_container_resources(c["id"], resources):
+                    updated.append(c["id"])
+            return {"updated": updated}
         url = f"{self.orchestrator_url}/containers/{image_id}/resources"
         return await self._make_request(url, method="PUT", json=resources)
 
     # Load Balancer API calls
     async def get_traffic_stats(self, image_id: str) -> Dict[str, Any]:
         """Get traffic statistics for an image"""
+        if USE_MOCKS:
+            return mock_lb.get_traffic_stats(image_id)
         url = f"{self.load_balancer_url}/traffic/{image_id}"
         return await self._make_request(url)
 
@@ -71,32 +102,47 @@ class ExternalServiceClient:
     # Service Discovery API calls
     async def get_services(self) -> List[Dict[str, Any]]:
         """Get all registered services"""
+        if USE_MOCKS:
+            return [{"id": k, "name": k, **v} for k, v in mock_sd.get_system_services().items()]
         url = f"{self.service_discovery_url}/services"
         return await self._make_request(url)
 
     async def get_service_health(self, service_id: str) -> Dict[str, Any]:
         """Get health status of a specific service"""
+        if USE_MOCKS:
+            data = mock_sd.get_system_services().get(service_id, {"status": "unknown"})
+            return {"status": data.get("status", "unknown"), "response_time": 50, "uptime": "99.9%"}
         url = f"{self.service_discovery_url}/health/{service_id}"
         return await self._make_request(url)
 
     # Billing API calls
     async def get_image_costs(self, image_id: str) -> Dict[str, Any]:
         """Get cost breakdown for an image"""
+        if USE_MOCKS:
+            # For mock, assume user_id unknown here
+            return mock_billing.get_image_billing(image_id, "unknown-user")
         url = f"{self.billing_url}/images/{image_id}/costs"
         return await self._make_request(url)
 
     async def get_user_billing_summary(self, user_id: str) -> Dict[str, Any]:
         """Get billing summary for a user"""
+        if USE_MOCKS:
+            return mock_billing.get_user_billing_summary(user_id)
         url = f"{self.billing_url}/users/{user_id}/summary"
         return await self._make_request(url)
 
     async def get_payment_limit_status(self, image_id: str) -> Dict[str, Any]:
         """Get payment limit status for an image"""
+        if USE_MOCKS:
+            return mock_billing.check_payment_limit(image_id)
         url = f"{self.billing_url}/payment-limits/{image_id}"
         return await self._make_request(url)
 
     async def set_payment_limit(self, image_id: str, limit: float) -> Dict[str, Any]:
         """Set payment limit for an image"""
+        if USE_MOCKS:
+            ok = mock_billing.set_payment_limit(image_id, limit)
+            return {"success": ok}
         url = f"{self.billing_url}/payment-limits/{image_id}"
         return await self._make_request(url, method="PUT", json={"limit": limit})
 
@@ -108,11 +154,15 @@ class ExternalServiceClient:
     # Business Intelligence API calls
     async def get_revenue_analytics(self) -> Dict[str, Any]:
         """Get revenue analytics"""
+        if USE_MOCKS:
+            return mock_billing.get_system_bi_data()
         url = f"{self.billing_url}/bi/revenue"
         return await self._make_request(url)
 
     async def get_usage_analytics(self) -> Dict[str, Any]:
         """Get usage analytics"""
+        if USE_MOCKS:
+            return mock_billing.get_system_bi_data()
         url = f"{self.billing_url}/bi/usage"
         return await self._make_request(url)
 

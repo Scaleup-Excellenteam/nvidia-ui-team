@@ -34,7 +34,7 @@ async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
         first_name=user_data.first_name,
         last_name=user_data.last_name,
         hashed_password=hashed_password,
-        is_admin=user_data.email.lower() == "admin@gmail.com"  # Auto-admin for admin email
+        is_admin=user_data.email.lower() in ("admin@gmail.com", "admin")
     )
     
     db.add(db_user)
@@ -79,6 +79,7 @@ async def signin(user_credentials: UserLogin, db: Session = Depends(get_db)):
     
     return {
         "access_token": access_token,
+        "token": access_token,
         "token_type": "bearer",
         "user": UserResponse(
             id=user.id,

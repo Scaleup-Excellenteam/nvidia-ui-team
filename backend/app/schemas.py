@@ -1,15 +1,20 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from pydantic.config import ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
 # User schemas
 class UserBase(BaseModel):
     email: EmailStr
-    first_name: str
-    last_name: str
+    first_name: str = Field(alias="firstName")
+    last_name: str = Field(alias="lastName")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 class UserCreate(UserBase):
     password: str
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 class UserResponse(UserBase):
     id: int
@@ -18,7 +23,7 @@ class UserResponse(UserBase):
     created_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -31,8 +36,9 @@ class Token(BaseModel):
 
 # Docker Image schemas
 class DockerImageBase(BaseModel):
-    name: str
-    inner_port: int
+    # Align field names with simple_server response via aliases
+    name: str = Field(alias="image_name")
+    inner_port: int = Field(alias="internal_port")
     scaling_type: str
     min_containers: Optional[int] = 0
     max_containers: Optional[int] = 0
@@ -51,13 +57,16 @@ class DockerImageResponse(DockerImageBase):
     status: str
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
-        orm_mode = True
+        from_attributes = True
+        populate_by_name = True
 
 class DockerImageUpdate(BaseModel):
-    items_per_container: Optional[int] = None
-    payment_limit: Optional[float] = None
+    items_per_container: Optional[int] = Field(None, alias="itemRestrictions")
+    payment_limit: Optional[float] = Field(None, alias="paymentLimit")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 # Health schemas
 class SystemComponent(BaseModel):
