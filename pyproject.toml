@@ -1,0 +1,17 @@
+[project]
+name = "nvidia-ui-team"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Haim Hubara" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+nvidia-ui-team = "nvidia_ui_team:main"
+
+[build-system]
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"
