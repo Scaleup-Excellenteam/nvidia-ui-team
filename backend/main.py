@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import time
+import asyncio
+import httpx
 
 from app.routers import auth, docker, health
 from app.database import engine, SessionLocal
@@ -117,6 +119,40 @@ async def root():
     """
     return Response(content=html, media_type="text/html", status_code=status.HTTP_200_OK)
 
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "ui-backend"}
+# Service registry registration on startup
+REGISTRY_BASE_URL = os.getenv("REGISTRY_BASE_URL", "http://127.0.0.1:7000")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
+SERVICE_ID = os.getenv("SERVICE_ID", "ui-1")
+
+@app.on_event("startup")
+async def register_with_registry():
+    payload = {
+        "id": SERVICE_ID,
+        "kind": "ui",
+        "url": f"{PUBLIC_BASE_URL}/health",
+        "status": "UP",
+    }
+
+    max_attempts = int(os.getenv("REGISTRY_RETRY_ATTEMPTS", "5"))
+    retry_delay_seconds = float(os.getenv("REGISTRY_RETRY_DELAY", "2"))
+
+    for attempt in range(max_attempts):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{REGISTRY_BASE_URL}/registry/parts",
+                    json=payload,
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                print("Registered UI service with registry:", payload)
+                break
+        except Exception as e:
+            if attempt < max_attempts - 1:
+                print(
+                    f"Registry registration failed (attempt {attempt + 1}/{max_attempts}): {e}. "
+                    f"Retrying in {retry_delay_seconds} seconds..."
+                )
+                await asyncio.sleep(retry_delay_seconds)
+            else:
+                print("Failed to register UI service with registry:", e)
