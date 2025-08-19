@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List, Literal, Dict
 from datetime import datetime
 
-ScalingType = Literal["static", "dynamic", "auto"]
+ScalingType = Literal["minimal", "maximal", "static"]
 
 # User schemas
 class UserBase(BaseModel):
@@ -56,6 +56,7 @@ class DockerImageBase(BaseModel):
 class DockerUploadResponse(BaseModel):
     image_name: str = Field(..., example="my-service")
     file_path: str = Field(..., example="/app/uploads/7_my-service.tar")
+    image_url: str = Field(..., example="http://localhost:8000/docker/images/7_my-service.tar")
     inner_port: int = Field(..., example=8080)
     scaling_type: ScalingType = Field(..., example="static")
     min_containers: int = Field(..., example=0)
@@ -167,3 +168,20 @@ class BillingInfo(BaseModel):
     payment_limit: float
     current_payment: float
     remaining: float
+
+# Container lifecycle schemas
+class StartContainersRequest(BaseModel):
+    count: int = Field(default=1, gt=0, description="Number of containers to start")
+
+class StartContainersResponse(BaseModel):
+    started: List[str] = Field(description="List of started container IDs")
+
+class StopAllContainersResponse(BaseModel):
+    stopped: List[str] = Field(description="List of stopped container IDs")
+
+class UpdateResourcesRequest(BaseModel):
+    cpu_limit: Optional[str] = Field(None, description="CPU limit (e.g., '1.0', '500m')")
+    memory_limit: Optional[str] = Field(None, description="Memory limit (e.g., '512Mi', '1Gi')")
+
+class UpdateResourcesResponse(BaseModel):
+    updated: List[str] = Field(description="List of updated container IDs")

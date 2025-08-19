@@ -37,13 +37,22 @@ class ExternalServiceClient:
             raise HTTPException(status_code=503, detail=f"External service unavailable: {e}")
 
     # Orchestrator API calls
-    async def get_container_instances(self, image_id: str) -> List[Dict[str, Any]]:
+    async def get_container_instances(self, image_id: str) -> Dict[str, Any]:
         """Get all container instances for an image"""
         if USE_MOCKS:
             instances = mock_orch.get_containers_by_image(image_id)
             return {"instances": instances}  # keep dict with key 'instances'
         url = f"{self.orchestrator_url}/containers/{image_id}/instances"
         return await self._make_request(url)
+
+    # Orchestrator DB image sync
+    async def sync_image_to_orchestrator(self, image_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Sync an image to the orchestrator's database (for their images table)."""
+        if USE_MOCKS:
+            # In mocks, pretend success and echo minimal data
+            return {"success": True, "image": image_data.get("image"), "url": image_data.get("image_url")}
+        url = f"{self.orchestrator_url}/api/images"
+        return await self._make_request(url, method="POST", json=image_data)
 
     async def start_container(self, image_id: str, count: int = 1, resources: Optional[Dict] = None) -> Dict[str, Any]:
         """Start new container instances"""

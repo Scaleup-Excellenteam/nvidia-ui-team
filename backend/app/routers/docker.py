@@ -1,15 +1,30 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import os
 import shutil
 from datetime import datetime
+from pathlib import Path
 
 from app.logger import logger
 
 from app.database import get_db
 from app.models import User, DockerImage
-from app.schemas import DockerImagesResponse, DockerImageUpdate, DockerUploadResponse, ScalingType,DockerImageListItem,ImageRestrictionsUpdate, ImageRestrictionsResponse
+from app.schemas import (
+    DockerImagesResponse, 
+    DockerImageUpdate, 
+    DockerUploadResponse, 
+    ScalingType,
+    DockerImageListItem,
+    ImageRestrictionsUpdate, 
+    ImageRestrictionsResponse,
+    StartContainersRequest,
+    StartContainersResponse,
+    StopAllContainersResponse,
+    UpdateResourcesRequest,
+    UpdateResourcesResponse,
+)
 from app.auth import get_current_active_user, get_current_admin_user
 from app.external_services import external_client
 
@@ -19,7 +34,7 @@ router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@router.post("/docker/upload", response_model=DockerUploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=DockerUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_docker_image(
     image: UploadFile = File(...),
     image_name: str = Form(..., alias="imageName"),
@@ -37,8 +52,9 @@ async def upload_docker_image(
     """Upload a Docker image"""
     logger.info(f"POST /docker/upload - Docker image upload attempt by user: {current_user.email}, image_name: {image_name}")
     
-    # Validate file type
-    if not image.filename.endswith(('.tar', '.tar.gz', '.tgz')):
+    # Validate file type (case-insensitive)
+    filename_lower = (image.filename or "").lower()
+    if not filename_lower.endswith(('.tar', '.tar.gz', '.tgz')):
         logger.error(f"POST /docker/upload - Invalid file type: {image.filename}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -72,12 +88,40 @@ async def upload_docker_image(
     
     logger.info(f"POST /docker/upload - Docker image uploaded successfully: {image_name}, ID: {db_image.id}")
     
-    # TODO: Send to orchestrator for processing
-    # await external_client.start_container(str(db_image.id), count=1)
+    # Generate URL for the uploaded image
+    image_filename = os.path.basename(db_image.image_file_path)
+    base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
+    image_url = f"{base_url}/docker/images/{image_filename}"
+    
+    # Send to orchestrator for processing
+    await external_client.start_container(str(db_image.id), count=1)
+    
+    # Sync image to orchestrator's database with URL
+    try:
+        orchestrator_image_data = {
+            "image": f"{image_name}:latest",
+            "image_url": image_url,  # URL for orchestrator to download the image
+            "min_replicas": min_containers or 1,
+            "max_replicas": max_containers or 5,
+            "resources": {
+                "cpu": "1.0",
+                "memory": "512Mi",
+                "disk": "10GB"
+            },
+            "env": {},
+            "ports": [{"container": inner_port, "host": inner_port}]
+        }
+        
+        await external_client.sync_image_to_orchestrator(orchestrator_image_data)
+        logger.info(f"POST /docker/upload - Image synced to orchestrator database: {image_name}")
+    except Exception as e:
+        logger.error(f"POST /docker/upload - Failed to sync image to orchestrator database {image_name}: {e}")
+        # Don't fail the upload if orchestrator sync is unavailable, just log the error
     
     return DockerUploadResponse(
         image_name=db_image.name,
-        file_path=db_image.image_file_path,        # Note: mapping to the name you promised
+        file_path=db_image.image_file_path,
+        image_url=image_url,
         inner_port=db_image.inner_port,
         scaling_type=db_image.scaling_type,
         min_containers=db_image.min_containers or 0,
@@ -115,14 +159,13 @@ async def get_docker_images(
             total_containers = len(instance_list)
             running_containers = sum(1 for inst in instance_list if inst.get("status") == "running")
 
-            healthy_containers = 0
-            total_errors = 0
-            for inst in instance_list:
-                health = await external_client.get_container_health(inst.get("id"))
-                if isinstance(health, dict) and health.get("status") == "healthy":
-                    healthy_containers += 1
-                errors = health.get("errors", []) if isinstance(health, dict) else []
-                total_errors += len(errors)
+            # Fetch health once per image and aggregate
+            health_data = await external_client.get_container_health(str(image.id))
+            containers_health = health_data.get("containers", []) if isinstance(health_data, dict) else []
+            healthy_containers = sum(
+                1 for c in containers_health if isinstance(c, dict) and c.get("status") == "healthy"
+            )
+            total_errors = len(health_data.get("errors", [])) if isinstance(health_data, dict) else 0
 
             traffic_data = await external_client.get_traffic_stats(str(image.id))
             requests_per_second = traffic_data.get("requests_per_second", 0.0)
@@ -225,4 +268,93 @@ async def update_image_restrictions(
         payment_limit=image.payment_limit,
         status=image.status,
         updated_at=image.updated_at,  # if exists in column; otherwise will leave None
+    )
+
+@router.post("/images/{image_id}/start", response_model=StartContainersResponse)
+async def start_image_containers(
+    image_id: int,
+    body: StartContainersRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    image: DockerImage | None = db.query(DockerImage).filter(DockerImage.id == image_id).first()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+    if not current_user.is_admin and image.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to start containers for this image")
+    try:
+        result = await external_client.start_container(str(image_id), count=body.count)
+        return StartContainersResponse(started=result.get("started", []))
+    except Exception as e:
+        logger.error(f"Failed to start containers for image {image_id}: {e}")
+        raise
+
+@router.post("/images/{image_id}/stop", response_model=StopAllContainersResponse)
+async def stop_all_image_containers(
+    image_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    image: DockerImage | None = db.query(DockerImage).filter(DockerImage.id == image_id).first()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+    if not current_user.is_admin and image.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to stop containers for this image")
+    try:
+        # In mocks we don't have a single call to stop all; iterate instances
+        instances_data = await external_client.get_container_instances(str(image_id))
+        instance_list = instances_data.get("instances", []) if isinstance(instances_data, dict) else []
+        stopped: list[str] = []
+        for inst in instance_list:
+            inst_id = inst.get("id")
+            if not inst_id:
+                continue
+            resp = await external_client.stop_container(str(image_id), inst_id)
+            if resp.get("stopped"):
+                stopped.append(inst_id)
+        return StopAllContainersResponse(stopped=stopped)
+    except Exception as e:
+        logger.error(f"Failed to stop containers for image {image_id}: {e}")
+        raise
+
+@router.put("/images/{image_id}/resources", response_model=UpdateResourcesResponse)
+async def update_image_resources(
+    image_id: int,
+    body: UpdateResourcesRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    image: DockerImage | None = db.query(DockerImage).filter(DockerImage.id == image_id).first()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+    if not current_user.is_admin and image.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to modify resources for this image")
+    resources: dict = {}
+    if body.cpu_limit is not None:
+        resources["cpu_limit"] = body.cpu_limit
+    if body.memory_limit is not None:
+        resources["memory_limit"] = body.memory_limit
+    if not resources:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    try:
+        result = await external_client.update_container_resources(str(image_id), resources)
+        return UpdateResourcesResponse(updated=result.get("updated", []))
+    except Exception as e:
+        logger.error(f"Failed to update resources for image {image_id}: {e}")
+        raise
+
+@router.get("/images/{filename}")
+async def get_image_file(filename: str):
+    """Serve uploaded Docker image files with basic path traversal protection"""
+    uploads_dir = Path(UPLOAD_DIR).resolve()
+    requested_path = (uploads_dir / filename).resolve()
+
+    # Ensure the requested file is within the uploads directory
+    if not str(requested_path).startswith(str(uploads_dir)) or not requested_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    return FileResponse(
+        path=str(requested_path),
+        filename=requested_path.name,
+        media_type="application/octet-stream",
     )
