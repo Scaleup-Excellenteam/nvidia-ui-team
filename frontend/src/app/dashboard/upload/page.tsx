@@ -20,7 +20,7 @@ export default function UploadPage() {
     maxContainers: 5,
     staticContainers: 2,
     itemsPerContainer: 100,
-    paymentLimit: 50.00, // New field for payment limit
+    paymentLimit: 50.0, // New field for payment limit
     description: "",
   });
 
@@ -179,7 +179,7 @@ export default function UploadPage() {
                       strokeLinejoin="round"
                     />
                   </svg>
-                  <div className="flex text-sm text-gray-600">
+                  <div className="flex justify-center text-sm text-gray-600">
                     <label
                       htmlFor="file-upload"
                       className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500"
@@ -195,7 +195,6 @@ export default function UploadPage() {
                         ref={fileInputRef}
                       />
                     </label>
-                    <p className="pl-1">or drag and drop</p>
                   </div>
                   <p className="text-xs text-gray-500">
                     TAR, TAR.GZ, TGZ up to 10MB
