@@ -2,7 +2,8 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List, Literal, Dict
 from datetime import datetime
 
-ScalingType = Literal["static", "dynamic", "auto"]
+# Align with frontend values used in UI ("minimal", "maximal", "static")
+ScalingType = Literal["minimal", "maximal", "static"]
 
 # User schemas
 class UserBase(BaseModel):

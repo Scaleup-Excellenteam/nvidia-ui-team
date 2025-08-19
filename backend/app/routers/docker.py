@@ -19,7 +19,7 @@ router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@router.post("/docker/upload", response_model=DockerUploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=DockerUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_docker_image(
     image: UploadFile = File(...),
     image_name: str = Form(..., alias="imageName"),
@@ -37,8 +37,9 @@ async def upload_docker_image(
     """Upload a Docker image"""
     logger.info(f"POST /docker/upload - Docker image upload attempt by user: {current_user.email}, image_name: {image_name}")
     
-    # Validate file type
-    if not image.filename.endswith(('.tar', '.tar.gz', '.tgz')):
+    # Validate file type (case-insensitive)
+    filename_lower = (image.filename or "").lower()
+    if not filename_lower.endswith(('.tar', '.tar.gz', '.tgz')):
         logger.error(f"POST /docker/upload - Invalid file type: {image.filename}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

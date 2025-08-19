@@ -20,7 +20,7 @@ export default function UploadPage() {
     maxContainers: 5,
     staticContainers: 2,
     itemsPerContainer: 100,
-    paymentLimit: 50.00, // New field for payment limit
+    paymentLimit: 50.0, // New field for payment limit
     description: "",
   });
 
@@ -112,7 +112,13 @@ export default function UploadPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || "Upload failed");
+        const backendDetail =
+          (errorData &&
+            (errorData.detail || errorData.error || errorData.message)) ||
+          null;
+        throw new Error(
+          backendDetail ? `Upload failed: ${backendDetail}` : "Upload failed"
+        );
       }
 
       const data = await response.json();
