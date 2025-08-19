@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 import os
 import time
 import asyncio
@@ -65,10 +66,18 @@ def ensure_admin_user():
 create_tables()
 ensure_admin_user()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: schedule service registry registration
+    asyncio.create_task(register_with_registry())
+    yield
+    # Shutdown: nothing to clean up
+
 app = FastAPI(
     title="ScaleUp-Nvidia UI Backend",
     description="Backend API for the ScaleUp-Nvidia container management platform",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -126,11 +135,10 @@ async def root():
     return Response(content=html, media_type="text/html", status_code=status.HTTP_200_OK)
 
 # Service registry registration on startup
-REGISTRY_BASE_URL = os.getenv("REGISTRY_BASE_URL", "http://127.0.0.1:7000")
+REGISTRY_BASE_URL = os.getenv("REGISTRY_BASE_URL", "http://localhost:7000")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
 SERVICE_ID = os.getenv("SERVICE_ID", "ui-1")
 
-@app.on_event("startup")
 async def register_with_registry():
     logger.info("Starting service registry registration")
     payload = {
@@ -166,3 +174,8 @@ async def register_with_registry():
             else:
                 logger.error(f"Failed to register UI service with registry: {e}")
                 print("Failed to register UI service with registry:", e)
+
+@app.post("/registry/register")
+async def trigger_registry_registration():
+    await register_with_registry()
+    return {"status": "triggered"}
