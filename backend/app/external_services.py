@@ -51,13 +51,13 @@ class ExternalServiceClient:
             raise HTTPException(status_code=503, detail=f"External service unavailable: {e}")
 
     # Orchestrator API calls
-    async def get_container_instances(self, image_id: str) -> Dict[str, Any]:
+    async def get_container_instances(self, image_name: str) -> Dict[str, Any]:
         """Get all container instances for an image"""
         if USE_MOCKS:
-            logger.info(f"Mock Orchestrator get_container_instances image_id={image_id}")
-            instances = mock_orch.get_containers_by_image(image_id)
+            logger.info(f"Mock Orchestrator get_container_instances image_name={image_name}")
+            instances = mock_orch.get_containers_by_image(image_name)
             return {"instances": instances}  # keep dict with key 'instances'
-        url = f"{self.orchestrator_url}/containers/{image_id}/instances"
+        url = f"{self.orchestrator_url}/containers/{image_name}/instances"
         return await self._make_request(url)
 
     # Orchestrator DB image sync
@@ -70,20 +70,14 @@ class ExternalServiceClient:
         url = f"{self.orchestrator_url}/api/images"
         return await self._make_request(url, method="POST", json=image_data)
 
-    async def start_container(self, image_id: str, count: int = 1, resources: Optional[Dict] = None) -> Dict[str, Any]:
-        """Start new container instances"""
+    async def start_container(self, start_body: Dict[str, Any]) -> Dict[str, Any]:
+        """Start containers by posting full StartBody payload to orchestrator."""
         if USE_MOCKS:
-            logger.info(f"Mock Orchestrator start_container image_id={image_id} count={count}")
-            new_ids = []
-            for _ in range(count):
-                c = mock_orch.create_container(image_id, resources or {})
-                new_ids.append(c["id"])
-            return {"started": new_ids}
-        url = f"{self.orchestrator_url}/containers/{image_id}/start"
-        data = {"count": count}
-        if resources:
-            data["resources"] = resources
-        return await self._make_request(url, method="POST", json=data)
+            logger.info("Mock Orchestrator start_container")
+            # emulate a single created container id
+            return {"ok": True, "action": "created", "container_id": "mock-123"}
+        url = f"{self.orchestrator_url}/start/container"
+        return await self._make_request(url, method="POST", json=start_body)
 
     async def stop_container(self, image_id: str, instance_id: str) -> Dict[str, Any]:
         """Stop a specific container instance"""

@@ -93,30 +93,7 @@ async def upload_docker_image(
     base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
     image_url = f"{base_url}/docker/images/{image_filename}"
     
-    # Send to orchestrator for processing
-    await external_client.start_container(str(db_image.id), count=1)
-    
-    # Sync image to orchestrator's database with URL
-    try:
-        orchestrator_image_data = {
-            "image": f"{image_name}:latest",
-            "image_url": image_url,  # URL for orchestrator to download the image
-            "min_replicas": min_containers or 1,
-            "max_replicas": max_containers or 5,
-            "resources": {
-                "cpu": "1.0",
-                "memory": "512Mi",
-                "disk": "10GB"
-            },
-            "env": {},
-            "ports": [{"container": inner_port, "host": inner_port}]
-        }
-        
-        await external_client.sync_image_to_orchestrator(orchestrator_image_data)
-        logger.info(f"POST /docker/upload - Image synced to orchestrator database: {image_name}")
-    except Exception as e:
-        logger.error(f"POST /docker/upload - Failed to sync image to orchestrator database {image_name}: {e}")
-        # Don't fail the upload if orchestrator sync is unavailable, just log the error
+    # Do not communicate with orchestrator on upload. Orchestrator integration happens on start/stop.
     
     return DockerUploadResponse(
         image_name=db_image.name,
@@ -154,7 +131,7 @@ async def get_docker_images(
 
     for image in images:
         try:
-            instances_data = await external_client.get_container_instances(str(image.id))
+            instances_data = await external_client.get_container_instances(image.name)
             instance_list = instances_data.get("instances", [])
             total_containers = len(instance_list)
             running_containers = sum(1 for inst in instance_list if inst.get("status") == "running")
@@ -283,8 +260,37 @@ async def start_image_containers(
     if not current_user.is_admin and image.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to start containers for this image")
     try:
-        result = await external_client.start_container(str(image_id), count=body.count)
-        return StartContainersResponse(started=result.get("started", []))
+        # Build orchestrator StartBody payload based on our stored upload metadata
+        base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
+        image_filename = os.path.basename(image.image_file_path)
+        image_url = f"{base_url}/docker/images/{image_filename}"
+
+        start_payload = {
+            "image": f"{image.name}:latest",
+            "image_url": image_url,
+            "min_replicas": image.min_containers or 1,
+            "max_replicas": image.max_containers or 5,
+            "resources": {
+                "cpu": "1.0",
+                "memory": "512Mi",
+            },
+            "env": {},
+            "ports": [{"container": image.inner_port, "host": image.inner_port}],
+        }
+        # Pass count for legacy compatibility if provided by UI
+        if body.count is not None:
+            start_payload["count"] = body.count
+
+        result = await external_client.start_container(start_payload)
+        started_ids = []
+        if isinstance(result, dict):
+            # Support both mock and real shapes
+            if "started" in result and isinstance(result["started"], list):
+                started_ids = result["started"]
+            elif "container_id" in result and result.get("container_id"):
+                started_ids = [str(result.get("container_id"))]
+
+        return StartContainersResponse(started=started_ids)
     except Exception as e:
         logger.error(f"Failed to start containers for image {image_id}: {e}")
         raise
@@ -312,6 +318,9 @@ async def stop_all_image_containers(
             resp = await external_client.stop_container(str(image_id), inst_id)
             if resp.get("stopped"):
                 stopped.append(inst_id)
+
+        # Optionally notify orchestrator of desired state stop using the same body with count=0 if needed
+        # (depends on orchestrator API semantics; keeping instance-level stops for now)
         return StopAllContainersResponse(stopped=stopped)
     except Exception as e:
         logger.error(f"Failed to stop containers for image {image_id}: {e}")
